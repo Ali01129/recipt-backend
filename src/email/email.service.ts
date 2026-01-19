@@ -22,19 +22,18 @@ export class EmailService {
         );
       }
 
-      // Use explicit SMTP configuration instead of 'service: gmail'
+      // Use port 465 with SSL - more reliable in cloud environments
       this.transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
-        port: 587,
-        secure: false,
-        requireTLS: true,
+        port: 465,
+        secure: true, // true for 465, false for other ports
         auth: {
           user: gmailUser,
           pass: gmailPassword,
         },
-        connectionTimeout: 30000,
-        greetingTimeout: 10000,
-        socketTimeout: 30000,
+        connectionTimeout: 60000,
+        greetingTimeout: 30000,
+        socketTimeout: 60000,
         pool: false,
         debug: process.env.NODE_ENV === 'development',
         logger: process.env.NODE_ENV === 'development',
