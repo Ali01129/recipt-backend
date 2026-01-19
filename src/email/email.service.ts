@@ -22,13 +22,23 @@ export class EmailService {
         );
       }
 
+      // Use explicit SMTP configuration instead of 'service: gmail'
       this.transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        requireTLS: true,
         auth: {
           user: gmailUser,
           pass: gmailPassword,
         },
-      });
+        connectionTimeout: 30000,
+        greetingTimeout: 10000,
+        socketTimeout: 30000,
+        pool: false,
+        debug: process.env.NODE_ENV === 'development',
+        logger: process.env.NODE_ENV === 'development',
+      } as nodemailer.TransportOptions);
     }
 
     return this.transporter;
