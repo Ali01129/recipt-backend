@@ -1,83 +1,42 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { EmailTemplate } from './templates/email.template';
 import { SendEmailDto } from './dto/send-email.dto';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: nodemailer.Transporter | null = null;
+  private readonly resend: Resend;
 
-  constructor(private configService: ConfigService) {}
-
-  private getTransporter(): nodemailer.Transporter {
-    if (!this.transporter) {
-      const gmailUser = this.configService.get<string>('GMAIL_USER');
-      const gmailPassword = this.configService.get<string>('GMAIL_APP_PASSWORD');
-
-      if (!gmailUser || !gmailPassword) {
-        throw new Error(
-          'Gmail credentials are not configured. Please set GMAIL_USER and GMAIL_APP_PASSWORD in your .env file.',
-        );
-      }
-
-      this.transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: gmailUser,
-          pass: gmailPassword,
-        },
-      });
+  constructor(private configService: ConfigService) {
+    const apiKey = this.configService.get<string>('RESEND_API_KEY');
+    if (!apiKey) {
+      throw new Error('Resend API key is not configured. Please set RESEND_API_KEY in your .env file.');
     }
-
-    return this.transporter;
+    this.resend = new Resend(apiKey);
   }
 
-  async verifyConnection(): Promise<boolean> {
+  async sendEmail(dto: SendEmailDto) {
     try {
-      const transporter = this.getTransporter();
-      await transporter.verify();
-      this.logger.log('Email transporter is ready to send messages');
-      return true;
-    } catch (error) {
-      this.logger.error('Email transporter verification failed:', error);
-      return false;
-    }
-  }
+      const { application, to, subject, body } = dto;
+      const fromEmail = this.configService.get<string>('RESEND_FROM_EMAIL') || 'onboarding@resend.dev';
 
-  async sendEmail(sendEmailDto: SendEmailDto): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    try {
-      const { application, to, subject, body } = sendEmailDto;
-
-      const transporter = this.getTransporter();
-      const gmailUser = this.configService.get<string>('GMAIL_USER');
-
-      const htmlContent = EmailTemplate.generateHtml(application, subject, body);
-      const textContent = EmailTemplate.generateText(application, subject, body);
-
-      const mailOptions = {
-        from: gmailUser,
+      const { data, error } = await this.resend.emails.send({
+        from: fromEmail,
         to,
         subject,
-        text: textContent,
-        html: htmlContent,
-      };
+        text: EmailTemplate.generateText(application, subject, body),
+        html: EmailTemplate.generateHtml(application, subject, body),
+      });
 
-      const info = await transporter.sendMail(mailOptions);
+      if (error) throw new Error(error.message || 'Failed to send email');
 
-      this.logger.log(`Email sent successfully to ${to}. Message ID: ${info.messageId}`);
-
-      return {
-        success: true,
-        messageId: info.messageId,
-      };
+      this.logger.log(`Email sent to ${to}. Message ID: ${data?.id}`);
+      return { success: true, messageId: data?.id };
     } catch (error) {
-      this.logger.error(`Failed to send email to ${sendEmailDto.to}:`, error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
+      this.logger.error(`Failed to send email to ${dto.to}:`, error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 }
